@@ -2,16 +2,16 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BussinessObject.Entities;
 
-public class Document
+public class FileTemplate
 {
     public int Id { get; set; }
 
     [Required]
     [MaxLength(200)]
-    public string Title { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
     [Required]
-    public string Content { get; set; } = string.Empty;
+    public string HtmlContent { get; set; } = string.Empty;
 
     [Required]
     public string OwnerId { get; set; } = string.Empty;

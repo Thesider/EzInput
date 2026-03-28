@@ -1,80 +1,71 @@
 using Controller.Interface;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 
 namespace Controller.Implement;
 
 public class FileTemplateStoreService : ITemplateStoreService
 {
-    private readonly string _storageFolder;
+    private readonly IFileTemplateService _fileTemplateService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public FileTemplateStoreService(IConfiguration configuration, IHostEnvironment environment)
+    public FileTemplateStoreService(IFileTemplateService fileTemplateService, IHttpContextAccessor httpContextAccessor)
     {
-        var configuredFolder = configuration["AiPipeline:TemplateFill:StorageFolder"] ?? "TemplateStore";
-        _storageFolder = Path.IsPathRooted(configuredFolder)
-            ? configuredFolder
-            : Path.Combine(environment.ContentRootPath, configuredFolder);
+        _fileTemplateService = fileTemplateService;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<string> SaveAsync(string? templateName, string templateHtml, CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(_storageFolder);
-
-        var normalizedTemplateName = string.IsNullOrWhiteSpace(templateName)
-            ? "template"
-            : string.Concat(templateName.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_'));
-
-        if (string.IsNullOrWhiteSpace(normalizedTemplateName))
+        var ownerId = GetCurrentUserId();
+        if (ownerId is null)
         {
-            normalizedTemplateName = "template";
+            throw new InvalidOperationException("Authenticated user is required to store templates.");
         }
 
-        var fileName = $"{normalizedTemplateName}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.html";
-        var fullPath = Path.Combine(_storageFolder, fileName);
-
-        await File.WriteAllTextAsync(fullPath, templateHtml, cancellationToken);
-
-        return fullPath;
+        var name = string.IsNullOrWhiteSpace(templateName) ? "template" : templateName.Trim();
+        var template = await _fileTemplateService.CreateAsync(ownerId, name, templateHtml);
+        return template.Id.ToString();
     }
 
-    public Task<IReadOnlyList<StoredTemplateItem>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StoredTemplateItem>> ListAsync(CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(_storageFolder))
+        var ownerId = GetCurrentUserId();
+        if (ownerId is null)
         {
-            return Task.FromResult<IReadOnlyList<StoredTemplateItem>>(Array.Empty<StoredTemplateItem>());
+            return Array.Empty<StoredTemplateItem>();
         }
 
-        var items = Directory.EnumerateFiles(_storageFolder, "*.html", SearchOption.TopDirectoryOnly)
-            .Select(path => new FileInfo(path))
-            .OrderByDescending(info => info.LastWriteTimeUtc)
-            .Select(info => new StoredTemplateItem(
-                info.Name,
-                Path.GetFileNameWithoutExtension(info.Name),
-                info.LastWriteTimeUtc))
+        var templates = await _fileTemplateService.GetByOwnerAsync(ownerId);
+        var items = templates
+            .Select(template => new StoredTemplateItem(
+                template.Id.ToString(),
+                template.Name,
+                template.UpdatedAtUtc))
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<StoredTemplateItem>>(items);
+        return items;
     }
 
     public async Task<string?> GetHtmlAsync(string key, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(key))
+        var ownerId = GetCurrentUserId();
+        if (ownerId is null || string.IsNullOrWhiteSpace(key))
         {
             return null;
         }
 
-        var invalidChars = Path.GetInvalidFileNameChars();
-        if (key.IndexOfAny(invalidChars) >= 0 || key.Contains("..") || key.Contains('/') || key.Contains('\\'))
+        if (!int.TryParse(key, out var templateId))
         {
             return null;
         }
 
-        var fullPath = Path.Combine(_storageFolder, key);
-        if (!File.Exists(fullPath))
-        {
-            return null;
-        }
+        var template = await _fileTemplateService.GetByIdForOwnerAsync(templateId, ownerId);
+        return template?.HtmlContent;
+    }
 
-        return await File.ReadAllTextAsync(fullPath, cancellationToken);
+    private string? GetCurrentUserId()
+    {
+        return _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 }

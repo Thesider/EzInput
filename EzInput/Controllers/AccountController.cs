@@ -1,3 +1,4 @@
+using BussinessObject.Entities;
 using EzInput.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -6,10 +7,10 @@ namespace EzInput.Controllers;
 
 public class AccountController : Microsoft.AspNetCore.Mvc.Controller
 {
-    private readonly UserManager<IdentityUser> _userManager;
-    private readonly SignInManager<IdentityUser> _signInManager;
+    private readonly UserManager<User> _userManager;
+    private readonly SignInManager<User> _signInManager;
 
-    public AccountController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
+    public AccountController(UserManager<User> userManager, SignInManager<User> signInManager)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -30,7 +31,7 @@ public class AccountController : Microsoft.AspNetCore.Mvc.Controller
             return View(model);
         }
 
-        var user = new IdentityUser
+        var user = new User
         {
             UserName = model.Email,
             Email = model.Email

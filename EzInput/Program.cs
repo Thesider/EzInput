@@ -1,3 +1,4 @@
+using BussinessObject.Entities;
 using Controller.Implement;
 using Controller.Interface;
 using DAO;
@@ -12,7 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<EzInputDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
+builder.Services.AddIdentity<User, IdentityRole>(options =>
     {
         options.Password.RequiredLength = 6;
         options.Password.RequireDigit = true;
@@ -29,12 +30,18 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.AccessDeniedPath = "/Account/Login";
 });
 
+builder.Services.AddHttpContextAccessor();
+
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IFileTemplateRepository, FileTemplateRepository>();
 builder.Services.AddScoped<IHtmlSanitizationService, HtmlSanitizationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IFileTemplateService, FileTemplateService>();
 builder.Services.AddScoped<IOcrService, TesseractOcrService>();
 builder.Services.AddScoped<IOcrTableFillService, OcrTableFillService>();
-builder.Services.AddScoped<ISpeechToTextService, GoogleSpeechToTextService>();
+builder.Services.AddScoped<ISpeechToTextService, WhisperSpeechToTextService>();
 builder.Services.AddScoped<ITemplateStoreService, FileTemplateStoreService>();
 
 builder.Services.AddControllersWithViews();

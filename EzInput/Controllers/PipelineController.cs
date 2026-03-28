@@ -95,7 +95,7 @@ public class PipelineController : Microsoft.AspNetCore.Mvc.Controller
             return BadRequest(new AiPipelineResponseViewModel
             {
                 Success = false,
-                Provider = "Google Speech-to-Text",
+                Provider = "Whisper (Local)",
                 ErrorMessage = "Please upload an audio file."
             });
         }

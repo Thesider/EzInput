@@ -112,6 +112,66 @@ small,
   padding: 1.1rem;
 }
 
+.pipeline-status-bubble {
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.pipeline-status-bubble.is-info {
+  color: #0e4f85;
+  background: #e8f3ff;
+  border: 1px solid #c7dff8;
+}
+
+.pipeline-status-bubble.is-error {
+  color: #842029;
+  background: #f8d7da;
+  border: 1px solid #f1aeb5;
+}
+
+.recording-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #f4a2ab;
+  background: #fff0f2;
+  color: #b42333;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.recording-live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #dc3545;
+  animation: recordingPulse 1s ease-in-out infinite;
+}
+
+@keyframes recordingPulse {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
 .btn {
   border-radius: 10px;
   font-weight: 600;
