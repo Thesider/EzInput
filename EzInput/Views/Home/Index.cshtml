@@ -1,0 +1,47 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<section class="hero mb-4">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+            <p class="text-uppercase fw-semibold small mb-2">Modern Data Workflow</p>
+            <h1 class="display-5 fw-bold mb-3">AI-powered data input, OCR, and speech-to-text in one clean workspace.
+            </h1>
+            <p class="mb-4">EzInput streamlines manual entry by combining templates, OCR extraction, and audio
+                transcription into a single professional flow.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" asp-controller="Document" asp-action="Create">New Data Input</a>
+                    <a class="btn btn-outline-primary" asp-controller="Document" asp-action="Index">Open Documents</a>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="surface-card p-3">
+                    <h2 class="h6 fw-semibold mb-2">Why teams use EzInput</h2>
+                    <ul class="mb-0 ps-3 small">
+                        <li>Template-first OCR table filling</li>
+                        <li>Google speech-to-text integration</li>
+                        <li>Clean document editing and search</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="feature-grid">
+            <article class="feature-item">
+                <h3 class="h6 fw-semibold">OCR Table Fill</h3>
+                <p class="small mb-0">Extract from images and map values into your template with structured matching.</p>
+            </article>
+            <article class="feature-item">
+                <h3 class="h6 fw-semibold">Speech-to-Text</h3>
+                <p class="small mb-0">Turn voice recordings into editable content to speed up first drafts.</p>
+            </article>
+            <article class="feature-item">
+                <h3 class="h6 fw-semibold">Template Store</h3>
+                <p class="small mb-0">Reuse proven layouts and keep data capture consistent across tasks.</p>
+            </article>
+        </div>
+    </section>
+</div>

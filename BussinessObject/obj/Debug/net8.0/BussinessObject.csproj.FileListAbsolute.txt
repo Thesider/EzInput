@@ -1,0 +1,11 @@
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\bin\Debug\net8.0\BussinessObject.deps.json
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\bin\Debug\net8.0\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\bin\Debug\net8.0\BussinessObject.pdb
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.AssemblyInfoInputs.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.AssemblyInfo.cs
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.csproj.CoreCompileInputs.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\refint\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.pdb
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\ref\BussinessObject.dll

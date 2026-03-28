@@ -1,0 +1,15 @@
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\bin\Debug\net8.0\DAO.deps.json
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\bin\Debug\net8.0\DAO.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\bin\Debug\net8.0\DAO.pdb
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\bin\Debug\net8.0\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\bin\Debug\net8.0\BussinessObject.pdb
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.csproj.AssemblyReference.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.AssemblyInfoInputs.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.AssemblyInfo.cs
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.csproj.CoreCompileInputs.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.csproj.Up2Date
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\refint\DAO.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.pdb
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\ref\DAO.dll

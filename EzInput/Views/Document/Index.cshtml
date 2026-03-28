@@ -1,0 +1,122 @@
+@model EzInput.Models.DocumentIndexViewModel
+@{
+    ViewData["Title"] = "Documents";
+}
+
+<div class="page-header align-items-end documents-header mb-3">
+    <div>
+        <p class="documents-kicker mb-1">Document Workspace</p>
+        <h1 class="mb-1">Documents</h1>
+        <p class="mb-0 small">Search, review, and manage your extracted document records.</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary">+ New Data Input</a>
+</div>
+
+<div class="surface-card p-3 p-lg-4 mb-3">
+    <form asp-action="Index" method="get" class="row g-3 align-items-end">
+        <div class="col-lg-6">
+            <label for="query" class="form-label">Search</label>
+            <input id="query" type="text" name="query" value="@Model.Query" class="form-control"
+                   placeholder="Search by title" />
+        </div>
+        <div class="col-sm-4 col-lg-3">
+            <label for="pageSize" class="form-label">Rows per page</label>
+            <select id="pageSize" name="pageSize" class="form-select">
+                <option value="10" selected="@(Model.PageSize == 10)">10</option>
+                <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                <option value="50" selected="@(Model.PageSize == 50)">50</option>
+            </select>
+        </div>
+        <div class="col-sm-8 col-lg-3 d-flex gap-2">
+            <button type="submit" class="btn btn-outline-primary">Search</button>
+            @if (!string.IsNullOrWhiteSpace(Model.Query))
+            {
+                <a asp-action="Index" class="btn btn-outline-secondary">Clear</a>
+            }
+        </div>
+    </form>
+</div>
+
+@if (!Model.Documents.Any())
+{
+    <div class="surface-card p-4 p-lg-5 text-center empty-state-card">
+        <h2 class="h4 mb-2">No documents found</h2>
+        <p class="mb-3">Create your first data input or try a different search keyword.</p>
+        <a asp-action="Create" class="btn btn-primary">Create New Data Input</a>
+    </div>
+}
+else
+{
+    <div class="surface-card p-2 p-lg-3">
+        <div class="d-flex justify-content-between align-items-center px-2 py-2 mb-1">
+            <div class="small fw-semibold">Showing @Model.StartItemIndex to @Model.EndItemIndex</div>
+            <span class="badge rounded-pill doc-count-chip">@Model.TotalItems total</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped align-middle app-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Updated (UTC)</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in Model.Documents)
+                    {
+                        <tr>
+                            <td>
+                                <div class="doc-title-cell">
+                                    <span class="doc-title-dot"></span>
+                                    <span>@doc.Title</span>
+                                </div>
+                            </td>
+                            <td><span class="badge rounded-pill doc-status-chip">Ready</span></td>
+                            <td>@doc.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="text-end">
+                                <a asp-action="ExportDoc" asp-route-id="@doc.Id"
+                                   class="btn btn-sm btn-outline-secondary me-1">Doc</a>
+                                <a asp-action="ExportExcel" asp-route-id="@doc.Id"
+                                   class="btn btn-sm btn-outline-secondary me-1">Excel</a>
+                                <a asp-action="Edit" asp-route-id="@doc.Id" class="btn btn-sm btn-outline-primary me-1">Edit</a>
+                                <form asp-action="Delete" asp-route-id="@doc.Id" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            onclick="return confirm('Delete this document?');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3 surface-soft px-3 py-2">
+        <div class="text-muted small">
+            Showing @Model.StartItemIndex to @Model.EndItemIndex of @Model.TotalItems documents
+        </div>
+        <nav aria-label="Document pagination">
+            <ul class="pagination mb-0">
+                <li class="page-item @(Model.CurrentPage <= 1 ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-action="Index" asp-route-query="@Model.Query"
+                       asp-route-page="@(Model.CurrentPage - 1)" asp-route-pageSize="@Model.PageSize">Previous</a>
+                </li>
+
+                @for (var pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++)
+                {
+                    <li class="page-item @(Model.CurrentPage == pageNumber ? "active" : string.Empty)">
+                        <a class="page-link" asp-action="Index" asp-route-query="@Model.Query" asp-route-page="@pageNumber"
+                           asp-route-pageSize="@Model.PageSize">@pageNumber</a>
+                    </li>
+                }
+
+                <li class="page-item @(Model.CurrentPage >= Model.TotalPages ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-action="Index" asp-route-query="@Model.Query"
+                       asp-route-page="@(Model.CurrentPage + 1)" asp-route-pageSize="@Model.PageSize">Next</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+}

@@ -1,0 +1,393 @@
+@model EzInput.Models.DocumentInputViewModel
+@{
+    ViewData["Title"] = "New Data Input";
+}
+
+<div class="mb-3">
+    <p class="documents-kicker mb-1">Document Workspace</p>
+    <h1 class="mb-1">New Data Input</h1>
+    <p class="small mb-0">Compose your content and use AI tools to extract, transcribe, and fill data quickly.</p>
+</div>
+
+<form asp-action="Create" method="post" class="surface-card p-3 p-lg-4">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="row g-4 create-workspace">
+        <div class="col-xl-8">
+            <div class="create-main-panel h-100">
+                <div class="mb-3">
+                    <label asp-for="Title" class="form-label"></label>
+                    <input asp-for="Title" class="form-control" />
+                    <span asp-validation-for="Title" class="text-danger"></span>
+                </div>
+
+                <div class="mb-0">
+                    <label asp-for="Content" class="form-label">Content</label>
+                    <textarea asp-for="Content" class="form-control" rows="14"></textarea>
+                    <span asp-validation-for="Content" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="pipeline-panel h-100 create-side-panel">
+                <h5 class="mb-3">AI Input Pipeline</h5>
+
+                <div class="mb-3 surface-soft p-3">
+                    <label for="ocrImageFile" class="form-label">Image for OCR (Tesseract)</label>
+                    <input id="ocrImageFile" type="file" class="form-control" accept="image/*" />
+                </div>
+
+                <div class="mb-3 surface-soft p-3">
+                    <label for="sttAudioFile" class="form-label">Audio for Speech-to-Text (Google)</label>
+                    <input id="sttAudioFile" type="file" class="form-control" accept="audio/*" />
+                </div>
+
+                <div class="d-grid gap-2 mb-3">
+                    <button id="ocrExtractButton" type="button" class="btn btn-outline-primary btn-sm">Extract Text From Image</button>
+                    <button id="sttExtractButton" type="button" class="btn btn-outline-primary btn-sm">Transcribe Audio</button>
+                    <button id="ocrFillTableButton" type="button" class="btn btn-outline-success btn-sm">OCR Fill Table</button>
+                    <button id="openTemplateModalButton" type="button" class="btn btn-outline-secondary btn-sm">Template Screen</button>
+                </div>
+
+                <div class="surface-soft p-3 mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="saveTemplateToggle" />
+                        <label class="form-check-label" for="saveTemplateToggle">Save template</label>
+                    </div>
+                    <input id="templateNameInput" class="form-control form-control-sm"
+                           placeholder="Template name (optional)" />
+                </div>
+
+                <label for="rawOcrTextInput" class="form-label">Raw OCR Text (optional test mode)</label>
+                <textarea id="rawOcrTextInput" class="form-control form-control-sm mb-3" rows="6"
+                          placeholder="Paste OCR rows here to test table fill without uploading image."></textarea>
+
+                <div class="alert alert-info mb-2 py-2">
+                    <div class="fw-semibold">Clear OCR Fill Steps</div>
+                    <ol class="mb-0 small">
+                        <li>Open Template Screen and apply a saved table template.</li>
+                        <li>Use Replace mode for a clean template before filling.</li>
+                        <li>Upload image OR paste Raw OCR Text, then click OCR Fill Table.</li>
+                        <li>Review matched and missing fields from the status message.</li>
+                    </ol>
+                </div>
+
+                <div id="pipelineStatus" class="small mt-2 text-muted"></div>
+                <div id="rejectedLinesWarning" class="alert alert-warning mt-2 d-none mb-0">
+                    <div class="fw-semibold">Rejected OCR lines (missing recognized SQL type)</div>
+                    <ul id="rejectedLinesList" class="mb-0 small"></ul>
+                </div>
+            </div>
+        </div>
+                    </div>
+
+    <div class="d-flex align-items-center gap-2 mt-4">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a asp-action="Index" class="btn btn-link">Cancel</a>
+    </div>
+</form>
+
+                <div class="modal fade" id="templateScreenModal" tabindex="-1" aria-labelledby="templateScreenModalLabel"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="templateScreenModalLabel">Template Screen</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="text-muted mb-3">Choose a saved template from storage and apply it to the editor.</p>
+                                <div class="mb-3">
+                                    <label for="templateApplyMode" class="form-label">Apply mode</label>
+                                    <select id="templateApplyMode" class="form-select form-select-sm">
+                                        <option value="append" selected>Append to current content</option>
+                                        <option value="replace">Replace current content</option>
+                                    </select>
+                                </div>
+                                <div id="templateList" class="row g-3"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-primary" id="refreshTemplateButton">Refresh</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @section Scripts {
+                    <partial name="_ValidationScriptsPartial" />
+                    <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+                    <script>
+                        let editorInstance;
+                        let templateModal;
+                        let loadedTemplates = [];
+
+                        ClassicEditor
+                        .create(document.querySelector('#Content'), {
+                        toolbar: [
+                        'undo', 'redo', '|',
+                        'heading', '|',
+                        'bold', 'italic', 'link', '|',
+                        'bulletedList', 'numberedList', '|',
+                        'insertTable', 'blockQuote'
+                        ],
+                        table: {
+                        contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells']
+                        }
+                        })
+                        .then(editor => {
+                        editorInstance = editor;
+                        initializeTemplateModal();
+                        })
+                        .catch(error => console.error(error));
+
+                        function setPipelineStatus(message, isError) {
+                        const statusElement = document.getElementById('pipelineStatus');
+                        statusElement.textContent = message;
+                        statusElement.className = isError ? 'small mt-2 text-danger' : 'small mt-2 text-muted';
+                        }
+
+                        function setRejectedLinesWarning(lines) {
+                        const warningBox = document.getElementById('rejectedLinesWarning');
+                        const list = document.getElementById('rejectedLinesList');
+
+                        list.innerHTML = '';
+                        if (!lines || lines.length === 0) {
+                        warningBox.classList.add('d-none');
+                        return;
+                        }
+
+                        lines.forEach(line => {
+                        const item = document.createElement('li');
+                        item.textContent = line;
+                        list.appendChild(item);
+                        });
+
+                        warningBox.classList.remove('d-none');
+                        }
+
+                        function clearRejectedLinesWarning() {
+                        setRejectedLinesWarning([]);
+                        }
+
+                        function appendToEditor(text) {
+                        if (!editorInstance || !text) {
+                        return;
+                        }
+
+                        const current = editorInstance.getData();
+                        const htmlText = text.replace(/\n/g, '<br/>');
+                        const combined = current ? current + '<p>' + htmlText + '</p>' : '<p>' + htmlText + '</p>';
+                        editorInstance.setData(combined);
+                        }
+
+                        function getVerificationToken() {
+                        return document.querySelector('input[name="__RequestVerificationToken"]').value;
+                        }
+
+                        function initializeTemplateModal() {
+                        const modalElement = document.getElementById('templateScreenModal');
+                        templateModal = new bootstrap.Modal(modalElement);
+                        document.getElementById('refreshTemplateButton').addEventListener('click', loadSavedTemplates);
+                        }
+
+                        function applyTemplateToEditor(templateHtml, templateName) {
+                        if (!editorInstance) {
+                        return;
+                        }
+
+                        const applyMode = document.getElementById('templateApplyMode').value;
+                        const current = editorInstance.getData();
+
+                        if (applyMode === 'replace') {
+                        editorInstance.setData(templateHtml);
+                        setPipelineStatus('Template applied (replace): ' + templateName + '.', false);
+                        } else {
+                        editorInstance.setData(current ? current + templateHtml : templateHtml);
+                        setPipelineStatus('Template applied (append): ' + templateName + '.', false);
+                        }
+
+                        templateModal.hide();
+                        }
+
+                        function renderTemplateList() {
+                        const container = document.getElementById('templateList');
+                        if (!loadedTemplates.length) {
+                        container.innerHTML = '<div class="col-12"><div class="alert alert-secondary mb-0">No saved templates found yet. Use OCR fill with Save template enabled first.</div></div>';
+                        return;
+                        }
+
+                        const cards = loadedTemplates.map(template => `
+                        <div class="col-md-6">
+                        <div class="border rounded p-3 h-100">
+                        <h6 class="mb-1">${template.name}</h6>
+                        <p class="small text-muted mb-3">Saved: ${new Date(template.lastModifiedUtc).toLocaleString()}</p>
+                        <button type="button" class="btn btn-sm btn-primary" data-template-key="${template.key}">Use Template</button>
+                        </div>
+                        </div>`).join('');
+
+                        container.innerHTML = cards;
+
+                        container.querySelectorAll('[data-template-key]').forEach(button => {
+                        button.addEventListener('click', function () {
+                        const templateKey = this.getAttribute('data-template-key');
+                        const selected = loadedTemplates.find(x => x.key === templateKey);
+                        if (!selected) {
+                        return;
+                        }
+
+                        applyTemplateToEditor(selected.html, selected.name);
+                        });
+                        });
+                        }
+
+                        async function loadSavedTemplates() {
+                        const container = document.getElementById('templateList');
+                        container.innerHTML = '<div class="col-12"><div class="small text-muted">Loading templates...</div></div>';
+
+                        try {
+                        const response = await fetch('/Pipeline/templates', { method: 'GET' });
+                        const result = await response.json();
+                        if (!response.ok || !result.success) {
+                        throw new Error(result.errorMessage || 'Failed to load templates.');
+                        }
+
+                        loadedTemplates = result.templates || [];
+                        renderTemplateList();
+                        } catch (error) {
+                        container.innerHTML = '<div class="col-12"><div class="alert alert-danger mb-0">' + (error.message || 'Failed to load templates.') + '</div></div>';
+                        }
+                        }
+
+                        async function runPipeline(endpoint, fieldName, fileInputId, actionName) {
+                        clearRejectedLinesWarning();
+                        const fileInput = document.getElementById(fileInputId);
+                        const file = fileInput.files[0];
+                        if (!file) {
+                        setPipelineStatus('Please choose a file for ' + actionName + '.', true);
+                        return;
+                        }
+
+                        const data = new FormData();
+                        data.append(fieldName, file);
+
+                        setPipelineStatus(actionName + ' in progress...', false);
+
+                        try {
+                        const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'RequestVerificationToken': getVerificationToken() },
+                        body: data
+                        });
+
+                        const result = await response.json();
+                        if (!response.ok || !result.success) {
+                        throw new Error(result.errorMessage || actionName + ' failed.');
+                        }
+
+                        appendToEditor(result.text);
+                        setPipelineStatus(actionName + ' completed via ' + result.provider + '.', false);
+                        } catch (error) {
+                        setPipelineStatus(error.message || (actionName + ' failed.'), true);
+                        }
+                        }
+
+                        async function runOcrFillTable() {
+                        clearRejectedLinesWarning();
+                        const imageFileInput = document.getElementById('ocrImageFile');
+                        const imageFile = imageFileInput.files[0];
+                        const rawOcrText = document.getElementById('rawOcrTextInput').value;
+
+                        if (!imageFile && (!rawOcrText || rawOcrText.trim().length === 0)) {
+                        setPipelineStatus('Please choose an image or paste raw OCR text for table fill.', true);
+                        return;
+                        }
+
+                        if (!editorInstance) {
+                        setPipelineStatus('Editor is not ready.', true);
+                        return;
+                        }
+
+                        const templateHtml = editorInstance.getData();
+                        if (!templateHtml || templateHtml.trim().length === 0) {
+                        setPipelineStatus('Please insert or create a table template first.', true);
+                        return;
+                        }
+
+                        const saveTemplate = document.getElementById('saveTemplateToggle').checked;
+                        const templateName = document.getElementById('templateNameInput').value;
+                        const data = new FormData();
+                        if (imageFile) {
+                        data.append('imageFile', imageFile);
+                        }
+                        data.append('templateHtml', templateHtml);
+                        data.append('templateName', templateName || '');
+                        data.append('rawOcrText', rawOcrText || '');
+                        data.append('saveTemplate', saveTemplate ? 'true' : 'false');
+
+                        setPipelineStatus('OCR table fill in progress...', false);
+
+                        try {
+                        const response = await fetch('/Pipeline/ocr-fill-table', {
+                        method: 'POST',
+                        headers: { 'RequestVerificationToken': getVerificationToken() },
+                        body: data
+                        });
+
+                        const result = await response.json();
+                        if (!response.ok || !result.success) {
+                        throw new Error(result.errorMessage || 'OCR table fill failed.');
+                        }
+
+                        setRejectedLinesWarning(result.rejectedLines || []);
+
+                        if (result.filledHtml) {
+                        editorInstance.setData(result.filledHtml);
+                        }
+
+                        if (result.canAutoFill && result.filledHtml) {
+                        let message = 'Table auto-filled (' + result.matchedCount + '/' + result.requiredCount + ').';
+                        if (result.templateSaved) {
+                        message += ' Template saved.';
+                        }
+                        setPipelineStatus(message, false);
+                        } else if (result.matchedCount > 0) {
+                        const missing = (result.missingFields || []).join(', ');
+                        let partialMessage = 'Partial fill applied (' + result.matchedCount + '/' + result.requiredCount + ').';
+                        if (missing) {
+                        partialMessage += ' Missing: ' + missing + '.';
+                        }
+                        if (result.templateSaved) {
+                        partialMessage += ' Template saved.';
+                        }
+                        setPipelineStatus(partialMessage, false);
+                        } else if (result.usedStructuredFallback && result.filledHtml) {
+                        let fallbackTableMessage = 'Structured table generated from OCR text.';
+                        if (result.templateSaved) {
+                        fallbackTableMessage += ' Template saved.';
+                        }
+                        setPipelineStatus(fallbackTableMessage, false);
+                        } else {
+                        const missing = (result.missingFields || []).join(', ');
+                        const fallbackMessage = 'No fields matched (' + result.matchedCount + '/' + result.requiredCount + '). Unable to build table from OCR text.' +
+                        (missing ? ' Missing: ' + missing : '');
+                        setPipelineStatus(fallbackMessage, false);
+                        }
+                        } catch (error) {
+                        setPipelineStatus(error.message || 'OCR table fill failed.', true);
+                        }
+                        }
+
+                        document.getElementById('openTemplateModalButton').addEventListener('click', function () {
+                        if (templateModal) {
+                        loadSavedTemplates();
+                        templateModal.show();
+                        }
+                        });
+                        document.getElementById('ocrExtractButton').addEventListener('click', () => runPipeline('/Pipeline/ocr', 'imageFile', 'ocrImageFile', 'OCR'));
+                        document.getElementById('sttExtractButton').addEventListener('click', () => runPipeline('/Pipeline/stt', 'audioFile', 'sttAudioFile', 'Speech-to-text'));
+                        document.getElementById('ocrFillTableButton').addEventListener('click', runOcrFillTable);
+                    </script>
+                }
