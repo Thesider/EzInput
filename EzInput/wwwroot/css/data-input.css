@@ -1,0 +1,30 @@
+/* Data Input view specific styles (matches provided mockup) */
+.create-workspace { gap: 24px; }
+.doc-title-input { font-size: 1.25rem; font-weight: 600; padding: 14px 12px; border: none; border-bottom: 1px solid #e6edf7; background: transparent; }
+.doc-title-input:focus { outline: none; box-shadow: none; border-bottom-color: #2e86ff; }
+.create-main-panel { background: #fff; border-radius: 10px; padding: 18px; }
+.create-side-panel { display:flex; flex-direction:column; gap:16px; }
+.upload-sources { display:flex; gap:12px; }
+.upload-box { flex:1; border:2px dashed #e6eefb; border-radius:10px; padding:18px; text-align:center; background:#fbfdff; cursor:pointer; transition:box-shadow .15s ease; }
+.upload-box:hover { box-shadow:0 6px 18px rgba(46,134,255,0.06); }
+.upload-box .upload-label { font-size:0.85rem; font-weight:700; color:#2e6bb0; margin-bottom:8px; }
+.upload-box .upload-hint { font-size:0.80rem; color:#6b7b8f; }
+.upload-box input[type="file"] { display:none; }
+.ai-actions { display:flex; flex-direction:column; gap:10px; }
+.ai-action-btn { text-align:left; padding:14px 16px; border-radius:10px; font-weight:700; border:1px solid transparent; }
+.ai-action-btn.primary { background:linear-gradient(180deg,#2e86ff,#1e5fd9); color:#fff; box-shadow:0 8px 20px rgba(30,95,217,0.18); }
+.ai-action-btn.secondary { background:#eef7ff; color:#1e5fd9; border-color:#d9ecff; }
+.live-output { background:#07121a; color:#9be5ff; padding:14px; border-radius:8px; min-height:140px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace; font-size:0.86rem; overflow:auto; }
+.live-output .raw-line { color:#9be5ff; opacity:0.95; }
+.load-template { width:100%; }
+.template-controls { background:#fbfdff; border-radius:8px; padding:10px; border:1px solid #eef6ff; }
+.pipeline-status-bubble { padding:8px 12px; border-radius:999px; display:inline-block; }
+.pipeline-status-bubble.is-error { background:#ffecec; color:#8b1e1e; }
+.pipeline-status-bubble.is-info { background:#e8f4ff; color:#064b84; }
+.save-footer { display:flex; justify-content:center; margin-top:18px; }
+.save-document-btn { background:linear-gradient(180deg,#0b66d1,#0a54b7); color:#fff; border:none; padding:12px 24px; border-radius:10px; font-weight:700; box-shadow:0 8px 24px rgba(11,102,209,0.18); }
+
+@media (max-width: 991px) {
+  .upload-sources { flex-direction:column; }
+  .ai-action-btn { width:100%; }
+}

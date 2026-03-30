@@ -1,0 +1,85 @@
+@model global::Controller.Models.AdminDashboardViewModel
+
+@{
+    ViewData["Title"] = "Admin Dashboard";
+}
+
+<div class="row">
+    <div class="col-md-3">
+        @await Html.PartialAsync("_AdminNav")
+    </div>
+    <div class="col-md-9 admin-content">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="mb-0">Admin Dashboard</h2>
+        </div>
+
+        <div class="admin-stats-grid">
+            <div class="admin-stats-card">
+                <div class="stat-icon">
+                    <span class="fs-4">👤</span>
+                </div>
+                <div class="stat-body">
+                    <div class="stat-title">Total Users</div>
+                    <div class="stat-value">@Model.TotalUsers</div>
+                    <div class="text-muted small">Recent: @Model.RecentUsers?.Count ?? 0</div>
+                    <canvas id="statChartUsers" class="stat-sparkline" aria-hidden="true"></canvas>
+                </div>
+            </div>
+
+            <div class="admin-stats-card">
+                <div class="stat-icon">
+                    <span class="fs-4">📄</span>
+                </div>
+                <div class="stat-body">
+                    <div class="stat-title">Documents</div>
+                    <div class="stat-value">@Model.TotalDocuments</div>
+                    <div class="text-muted small">Updated recently</div>
+                    <canvas id="statChartDocs" class="stat-sparkline" aria-hidden="true"></canvas>
+                </div>
+            </div>
+
+            <div class="admin-stats-card">
+                <div class="stat-icon">
+                    <span class="fs-4">📁</span>
+                </div>
+                <div class="stat-body">
+                    <div class="stat-title">Templates</div>
+                    <div class="stat-value">@Model.TotalTemplates</div>
+                    <div class="text-muted small">Active templates</div>
+                    <canvas id="statChartTemplates" class="stat-sparkline" aria-hidden="true"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-table-surface mt-3">
+            <div class="admin-card-table">
+                <h4 class="mb-3">Recent Users</h4>
+                <table class="table table-borderless mb-0">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th style="width:160px">Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var email in Model.RecentUsers ?? new List<string>())
+                        {
+                            <tr>
+                                <td>@email</td>
+                                <td>-</td>
+                            </tr>
+                        
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="~/js/admin-dashboard-widgets.js"></script>
+}

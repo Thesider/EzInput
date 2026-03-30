@@ -555,6 +555,9 @@
         }
       },
       "BussinessObject/1.0.0": {
+        "dependencies": {
+          "Microsoft.Extensions.Identity.Stores": "8.0.12"
+        },
         "runtime": {
           "BussinessObject.dll": {
             "assemblyVersion": "1.0.0.0",

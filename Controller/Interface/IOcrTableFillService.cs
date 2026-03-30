@@ -4,5 +4,6 @@ namespace Controller.Interface;
 
 public interface IOcrTableFillService
 {
-    Task<OcrTableFillResult> FillAsync(string templateHtml, string ocrText, CancellationToken cancellationToken = default);
+    // heuristicMode: "auto" | "schema" | "labelValue"
+    Task<OcrTableFillResult> FillAsync(string templateHtml, string ocrText, string heuristicMode = "auto", CancellationToken cancellationToken = default);
 }

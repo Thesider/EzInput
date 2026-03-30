@@ -29,6 +29,16 @@
             <div class="col-md-6">
                 <label for="ocrImageFile" class="form-label">Image for OCR (Tesseract)</label>
                 <input id="ocrImageFile" type="file" class="form-control" accept="image/*" />
+                <div class="mt-2">
+                    <button id="cameraCaptureButton" type="button" class="btn btn-outline-info btn-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                            <path d="M15 12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h1.172a3 3 0 0 0 2.12-.879l.83-.828A1 1 0 0 1 6.827 3h2.344a1 1 0 0 1 .707.293l.828.828A3 3 0 0 0 12.828 5H14a1 1 0 0 1 1 1zM2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4z"/>
+                            <path d="M8 11a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5m0 1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M3 6.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0"/>
+                        </svg>
+                        Capture from Camera
+                    </button>
+                    <span id="cameraCaptureStatus" class="small text-muted ms-2 d-none"></span>
+                </div>
                 <div class="mt-2 d-flex flex-wrap gap-2">
                     <button id="ocrExtractButton" type="button" class="btn btn-outline-primary btn-sm">Extract Text From
                         Image</button>
@@ -45,6 +55,14 @@
 
                             <input id="templateNameInput" class="form-control form-control-sm mt-2"
                                    placeholder="Template name (optional)" />
+                                <div class="mt-2">
+                                    <label for="heuristicModeSelect" class="form-label small">Parsing mode</label>
+                                    <select id="heuristicModeSelect" class="form-select form-select-sm">
+                                        <option value="auto" selected>Auto-detect</option>
+                                        <option value="schema">Schema (Column / Data Type / Constraints)</option>
+                                        <option value="labelValue">Label/Value (Column / Value)</option>
+                                    </select>
+                                </div>
 
                             <label for="rawOcrTextInput" class="form-label mt-3">Raw OCR Text (optional test mode)</label>
                             <textarea id="rawOcrTextInput" class="form-control form-control-sm" rows="4"
@@ -93,6 +111,31 @@
                                 <a asp-action="Index" class="btn btn-link">Cancel</a>
                             </div>
                         </form>
+
+                        <div class="modal fade" id="cameraCaptureModal" tabindex="-1" aria-labelledby="cameraCaptureModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-lg modal-dialog-centered">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="cameraCaptureModalLabel">Capture Image</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="cameraModalClose"></button>
+                                    </div>
+                                    <div class="modal-body text-center">
+                                        <div id="cameraPreviewContainer">
+                                            <video id="cameraVideo" autoplay playsinline class="w-100 rounded border" style="max-height: 480px; object-fit: contain; background: #000;"></video>
+                                        </div>
+                                        <div id="cameraCaptureContainer" class="d-none">
+                                            <canvas id="cameraCanvas" class="d-none"></canvas>
+                                            <img id="cameraPreviewImage" class="w-100 rounded border" style="max-height: 480px; object-fit: contain;" alt="Captured image" />
+                                        </div>
+                                        <div id="cameraError" class="alert alert-danger d-none mt-3 mb-0"></div>
+                                    </div>
+                                    <div class="modal-footer" id="cameraModalFooter">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="button" class="btn btn-primary" id="cameraCaptureAction">Capture</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <div class="modal fade" id="templateScreenModal" tabindex="-1" aria-labelledby="templateScreenModalLabel"
                              aria-hidden="true">
@@ -153,6 +196,7 @@
                                 .then(editor => {
                                 editorInstance = editor;
                                 initializeTemplateModal();
+                                initializeCameraModal();
                                 })
                                 .catch(error => console.error(error));
 
@@ -504,12 +548,14 @@
 
                                 const saveTemplate = document.getElementById('saveTemplateToggle').checked;
                                 const templateName = document.getElementById('templateNameInput').value;
+                                const heuristicMode = document.getElementById('heuristicModeSelect') ? document.getElementById('heuristicModeSelect').value : 'auto';
                                 const data = new FormData();
                                 if (imageFile) {
                                 data.append('imageFile', imageFile);
                                 }
                                 data.append('templateHtml', templateHtml);
                                 data.append('templateName', templateName || '');
+                                data.append('heuristicMode', heuristicMode || 'auto');
                                 data.append('rawOcrText', rawOcrText || '');
                                 data.append('saveTemplate', saveTemplate ? 'true' : 'false');
 
@@ -566,6 +612,123 @@
                                 }
                                 }
 
+                                // ── Camera Capture ──────────────────────────────────────────
+                                let cameraStream = null;
+                                let cameraCapturedFile = null;
+                                let cameraModal = null;
+
+                                function initializeCameraModal() {
+                                    const modalElement = document.getElementById('cameraCaptureModal');
+                                    cameraModal = new bootstrap.Modal(modalElement);
+                                    modalElement.addEventListener('hidden.bs.modal', stopCameraStream);
+                                }
+
+                                function stopCameraStream() {
+                                    if (cameraStream) {
+                                        cameraStream.getTracks().forEach(track => track.stop());
+                                        cameraStream = null;
+                                    }
+                                    const video = document.getElementById('cameraVideo');
+                                    video.srcObject = null;
+                                }
+
+                                function setCameraError(message) {
+                                    const errorEl = document.getElementById('cameraError');
+                                    if (message) {
+                                        errorEl.textContent = message;
+                                        errorEl.classList.remove('d-none');
+                                    } else {
+                                        errorEl.classList.add('d-none');
+                                    }
+                                }
+
+                                function showCameraPreview() {
+                                    document.getElementById('cameraPreviewContainer').classList.remove('d-none');
+                                    document.getElementById('cameraCaptureContainer').classList.add('d-none');
+                                    document.getElementById('cameraCaptureAction').textContent = 'Capture';
+                                    document.getElementById('cameraCaptureAction').className = 'btn btn-primary';
+                                    document.getElementById('cameraCaptureAction').onclick = captureFromCamera;
+                                }
+
+                                function showCameraCaptured() {
+                                    document.getElementById('cameraPreviewContainer').classList.add('d-none');
+                                    document.getElementById('cameraCaptureContainer').classList.remove('d-none');
+                                    document.getElementById('cameraCaptureAction').textContent = 'Use This Image';
+                                    document.getElementById('cameraCaptureAction').className = 'btn btn-success';
+                                    document.getElementById('cameraCaptureAction').onclick = useCameraCapture;
+                                    const footer = document.getElementById('cameraModalFooter');
+                                    if (!document.getElementById('cameraRetakeButton')) {
+                                        const retakeBtn = document.createElement('button');
+                                        retakeBtn.type = 'button';
+                                        retakeBtn.className = 'btn btn-outline-warning';
+                                        retakeBtn.id = 'cameraRetakeButton';
+                                        retakeBtn.textContent = 'Retake';
+                                        retakeBtn.onclick = retakeCamera;
+                                        footer.insertBefore(retakeBtn, footer.firstChild);
+                                    }
+                                }
+
+                                async function openCameraCapture() {
+                                    setCameraError(null);
+                                    showCameraPreview();
+                                    stopCameraStream();
+                                    cameraCapturedFile = null;
+                                    document.getElementById('cameraCaptureStatus').classList.add('d-none');
+                                    try {
+                                        const constraints = { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } };
+                                        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                                        const video = document.getElementById('cameraVideo');
+                                        video.srcObject = cameraStream;
+                                        cameraModal.show();
+                                    } catch (err) {
+                                        let message = 'Could not access camera. ';
+                                        if (err.name === 'NotAllowedError') message += 'Permission denied.';
+                                        else if (err.name === 'NotFoundError') message += 'No camera found.';
+                                        else message += err.message || 'Unknown error.';
+                                        setCameraError(message);
+                                        document.getElementById('cameraPreviewContainer').classList.add('d-none');
+                                        cameraModal.show();
+                                    }
+                                }
+
+                                function captureFromCamera() {
+                                    const video = document.getElementById('cameraVideo');
+                                    const canvas = document.getElementById('cameraCanvas');
+                                    const previewImg = document.getElementById('cameraPreviewImage');
+                                    canvas.width = video.videoWidth;
+                                    canvas.height = video.videoHeight;
+                                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                                    previewImg.src = canvas.toDataURL('image/png');
+                                    stopCameraStream();
+                                    showCameraCaptured();
+                                }
+
+                                function retakeCamera() {
+                                    const retakeBtn = document.getElementById('cameraRetakeButton');
+                                    if (retakeBtn) retakeBtn.remove();
+                                    openCameraCapture();
+                                }
+
+                                function useCameraCapture() {
+                                    const canvas = document.getElementById('cameraCanvas');
+                                    canvas.toBlob(blob => {
+                                        if (!blob) { setCameraError('Failed to capture image.'); return; }
+                                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                                        cameraCapturedFile = new File([blob], `camera-capture-${timestamp}.png`, { type: 'image/png' });
+                                        const fileInput = document.getElementById('ocrImageFile');
+                                        const dataTransfer = new DataTransfer();
+                                        dataTransfer.items.add(cameraCapturedFile);
+                                        fileInput.files = dataTransfer.files;
+                                        const statusEl = document.getElementById('cameraCaptureStatus');
+                                        statusEl.textContent = 'Image captured from camera.';
+                                        statusEl.classList.remove('d-none');
+                                        const retakeBtn = document.getElementById('cameraRetakeButton');
+                                        if (retakeBtn) retakeBtn.remove();
+                                        cameraModal.hide();
+                                        setPipelineStatus('Camera image captured. You can now run OCR or OCR Fill Table.', false);
+                                    }, 'image/png');
+                                }
+
                                 document.getElementById('openTemplateModalButton').addEventListener('click', function () {
                                 if (templateModal) {
                                 loadSavedTemplates();
@@ -577,5 +740,6 @@
                                 document.getElementById('ocrExtractButton').addEventListener('click', () => runPipeline('/Pipeline/ocr', 'imageFile', 'ocrImageFile', 'OCR'));
                                 document.getElementById('sttExtractButton').addEventListener('click', () => runPipeline('/Pipeline/stt', 'audioFile', 'sttAudioFile', 'Speech-to-text'));
                                 document.getElementById('ocrFillTableButton').addEventListener('click', runOcrFillTable);
+                                document.getElementById('cameraCaptureButton').addEventListener('click', openCameraCapture);
                             </script>
                         }

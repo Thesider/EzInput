@@ -1,0 +1,13 @@
+@{
+    var action = (string)(ViewContext.RouteData.Values["action"] ?? "");
+}
+
+<nav class="nav flex-column nav-pills admin-sidebar">
+    <a class="nav-link @(action == "Index" ? "active" : "") mb-1" asp-controller="Admin"
+       asp-action="Index">Dashboard</a>
+    <a class="nav-link @(action == "Users" || action == "EditUser" ? "active" : "") mb-1" asp-controller="Admin"
+       asp-action="Users">Users</a>
+    <a class="nav-link @(action == "Documents" || action == "EditDocument" ? "active" : "") mb-1" asp-controller="Admin"
+       asp-action="Documents">Documents</a>
+    <a class="nav-link @(action == "Stats" ? "active" : "") mb-1" asp-controller="Admin" asp-action="Stats">Stats</a>
+</nav>

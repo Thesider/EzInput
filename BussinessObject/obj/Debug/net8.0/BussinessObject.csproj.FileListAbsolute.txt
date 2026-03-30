@@ -9,3 +9,8 @@ C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObjec
 C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\refint\BussinessObject.dll
 C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.pdb
 C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\ref\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.csproj.AssemblyReference.cache
+C:\Users\Bar\Desktop\PPJ\EzInput\BussinessObject\obj\Debug\net8.0\BussinessObject.sourcelink.json
+C:\Users\Bar\Desktop\PPJ\EzInput\tools\BussinessObject.deps.json
+C:\Users\Bar\Desktop\PPJ\EzInput\tools\BussinessObject.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\tools\BussinessObject.pdb

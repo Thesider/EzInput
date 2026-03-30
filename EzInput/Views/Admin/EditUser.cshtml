@@ -1,0 +1,65 @@
+@model global::Controller.Models.AdminUserEditViewModel
+
+@{
+    ViewData["Title"] = "Edit User";
+}
+
+<div class="row">
+    <div class="col-md-3">
+        @await Html.PartialAsync("_AdminNav")
+    </div>
+
+    <div class="col-md-9 admin-content">
+
+        <h2>Edit User</h2>
+
+        <form method="post" asp-action="EditUser">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id" />
+
+    <div class="mb-3">
+        <label class="form-label">Email</label>
+        <input class="form-control" asp-for="Email" readonly />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Roles</label>
+        <div>
+            @foreach (var r in Model.AllRoles)
+            {
+                var isChecked = Model.AssignedRoles.Contains(r);
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" name="AssignedRoles" value="@r" @(isChecked ? "checked" : "") />
+                    <label class="form-check-label">@r</label>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Permissions</label>
+        <div>
+            @foreach (var p in Model.AllPermissions)
+            {
+                var isChecked = Model.AssignedPermissions.Contains(p);
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" name="AssignedPermissions" value="@p" @(isChecked ?
+                                                                                                                                      "checked" : "") />
+                    <label class="form-check-label">@p</label>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">New Password (leave blank to keep)</label>
+        <input class="form-control" asp-for="NewPassword" />
+    </div>
+
+    <div>
+        <button class="btn btn-primary">Save</button>
+        <a class="btn btn-secondary ms-2" asp-action="Users">Back</a>
+    </div>
+</form>
+    </div>
+</div>

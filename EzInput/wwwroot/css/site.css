@@ -330,3 +330,119 @@ small,
   border-top: 1px solid rgba(199, 214, 234, 0.85);
   background: rgba(248, 249, 255, 0.8);
 }
+
+/* Admin-specific UI styles */
+.admin-sidebar {
+  background: linear-gradient(180deg, #0b2340 0%, #0f3a57 100%);
+  color: #eaf6ff;
+  padding: 1.25rem;
+  border-radius: 14px;
+  min-height: calc(100vh - 160px);
+  position: sticky;
+  top: 90px;
+}
+
+.admin-sidebar .nav-link {
+  color: rgba(234, 246, 255, 0.95);
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.admin-sidebar .nav-link.active {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+}
+
+.admin-content {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media(min-width: 768px) {
+  .admin-stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.admin-stats-card {
+  background: var(--ez-surface);
+  border: 1px solid var(--ez-outline);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  box-shadow: var(--ez-shadow);
+}
+
+.admin-stats-card .stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: linear-gradient(135deg, rgba(15,108,189,0.12), rgba(58,169,159,0.08));
+}
+
+.admin-stats-card .stat-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.admin-stats-card .stat-title {
+  color: var(--ez-text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.admin-stats-card .stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--ez-text);
+}
+
+.admin-card-table {
+  padding: 1rem;
+}
+
+.admin-table-surface {
+  background: var(--ez-surface);
+  border: 1px solid var(--ez-outline);
+  border-radius: 14px;
+  box-shadow: var(--ez-shadow);
+}
+
+.edit-card-form {
+  background: var(--ez-surface);
+  border-radius: 14px;
+  padding: 1.25rem;
+  border: 1px solid var(--ez-outline);
+  box-shadow: var(--ez-shadow);
+}
+
+/* small sparkline canvas inside stat cards */
+.stat-sparkline {
+  width: 100%;
+  height: 48px;
+  max-height: 48px;
+  min-height: 48px;
+  display: block;
+  margin-top: 0.4rem;
+  box-sizing: border-box;
+}

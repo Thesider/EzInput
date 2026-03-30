@@ -29,4 +29,6 @@ public class AiPipelineResponseViewModel
     public bool TemplateSaved { get; init; }
 
     public string? SavedTemplatePath { get; init; }
+
+
 }

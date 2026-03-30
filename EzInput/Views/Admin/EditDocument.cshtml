@@ -1,0 +1,49 @@
+@model global::Controller.Models.AdminDocumentEditModel
+
+@{
+    ViewData["Title"] = "Edit Document";
+}
+
+<div class="row">
+    <div class="col-md-3">
+        @await Html.PartialAsync("_AdminNav")
+    </div>
+    <div class="col-md-9">
+
+        <h2>Edit Document</h2>
+
+        <form method="post" asp-action="EditDocument">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="Id" />
+
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                <input class="form-control" asp-for="Title" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Plain content (readable)</label>
+                <textarea class="form-control" rows="10" readonly>@Model.PlainTextPreview</textarea>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="editRaw"
+                           onclick="document.getElementById('rawHtmlArea').classList.toggle('d-none');" />
+                    <label class="form-check-label" for="editRaw">Show / Edit raw HTML</label>
+                </div>
+            </div>
+
+            <div id="rawHtmlArea" class="mb-3 d-none">
+                <label class="form-label">Raw HTML</label>
+                <textarea class="form-control" asp-for="RawHtml" rows="10"></textarea>
+            </div>
+
+            <div>
+                <button class="btn btn-primary">Save</button>
+                <a class="btn btn-secondary ms-2" asp-action="Documents">Back</a>
+            </div>
+        </form>
+
+    </div>
+</div>

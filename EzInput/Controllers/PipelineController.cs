@@ -122,6 +122,7 @@ public class PipelineController : Microsoft.AspNetCore.Mvc.Controller
         string? templateHtml,
         string? templateName,
         string? rawOcrText,
+        string? heuristicMode,
         bool saveTemplate = false,
         CancellationToken cancellationToken = default)
     {
@@ -166,7 +167,8 @@ public class PipelineController : Microsoft.AspNetCore.Mvc.Controller
             provider = ocrResult.Provider;
         }
 
-        var fillResult = await _ocrTableFillService.FillAsync(templateHtml, extractedText ?? string.Empty, cancellationToken);
+        var heuristic = string.IsNullOrWhiteSpace(heuristicMode) ? "auto" : heuristicMode;
+        var fillResult = await _ocrTableFillService.FillAsync(templateHtml, extractedText ?? string.Empty, heuristic, cancellationToken);
 
         var templateSaved = false;
         string? savedTemplatePath = null;

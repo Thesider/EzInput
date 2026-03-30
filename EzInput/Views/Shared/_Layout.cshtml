@@ -36,6 +36,14 @@
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Document" asp-action="Create">New Input</a>
                             </li>
+                            @* Admin link for users in Admin role or with admin permission *@
+                            @if (User.IsInRole("Admin") || User.HasClaim("permission", "manage_users") ||
+                                                    User.HasClaim("permission", "view_stats") || User.HasClaim("permission", "manage_docs"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link" asp-controller="Admin" asp-action="Index">Admin</a>
+                                </li>
+                            }
                         }
                     </ul>
                     <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center gap-lg-2">

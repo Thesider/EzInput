@@ -3,6 +3,7 @@ using Controller.Models;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Configuration;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace Controller.Implement;
 
@@ -19,7 +20,7 @@ public class OcrTableFillService : IOcrTableFillService
         _autoFillThreshold = Math.Clamp(parsed, 0.1, 1.0);
     }
 
-    public Task<OcrTableFillResult> FillAsync(string templateHtml, string ocrText, CancellationToken cancellationToken = default)
+    public Task<OcrTableFillResult> FillAsync(string templateHtml, string ocrText, string heuristicMode = "auto", CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(templateHtml))
         {
@@ -35,7 +36,7 @@ public class OcrTableFillService : IOcrTableFillService
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToList();
 
-        var structuredFallback = BuildStructuredTableFallback(lines);
+        var structuredFallback = BuildStructuredTableFallback(lines, heuristicMode ?? "auto");
         var structuredFallbackHtml = structuredFallback.Html;
 
         var fieldNodes = htmlDocument.DocumentNode.SelectNodes("//*[@data-field]");
@@ -172,6 +173,18 @@ public class OcrTableFillService : IOcrTableFillService
                 }
             }
 
+            // Also try label+value on same line (e.g., "Donations $ 64,285.95")
+            var labelValueMatch = Regex.Match(line, @"^(.+?)\s+\$\s*([\d,]+(?:\.\d+)?)$");
+            if (labelValueMatch.Success)
+            {
+                var key = NormalizeToken(labelValueMatch.Groups[1].Value);
+                var value = NormalizeCurrencyValue(labelValueMatch.Groups[2].Value);
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value) && !pairs.ContainsKey(key))
+                {
+                    pairs[key] = value;
+                }
+            }
+
             var tokens = SplitLineTokens(line);
             if (tokens.Count >= 2)
             {
@@ -269,31 +282,409 @@ public class OcrTableFillService : IOcrTableFillService
         return null;
     }
 
-    private static StructuredTableParseResult BuildStructuredTableFallback(List<string> lines)
+    // ──────────────────────────────────────────────────────────────
+    // Dynamic multi-strategy table builder
+    // ──────────────────────────────────────────────────────────────
+
+    private static StructuredTableParseResult BuildStructuredTableFallback(List<string> rawLines, string heuristicMode)
     {
-        var tableStartIndex = FindTableStartIndex(lines);
-        var candidateLines = lines.Skip(tableStartIndex).ToList();
+        var cleaned = rawLines.Select(CleanOcrLine).ToList();
+
+        // Strategy 1: Detect vertical column layout (e.g., simpletable.png)
+        var vertical = DetectVerticalColumnLayout(cleaned);
+        if (vertical is not null)
+        {
+            return vertical;
+        }
+
+        // Strategy 2: Detect label+value pairs on same line (e.g., 2x7.png, test.png)
+        var labelValue = DetectLabelValuePairLayout(cleaned, heuristicMode);
+        if (labelValue is not null)
+        {
+            return labelValue;
+        }
+
+        // Strategy 3: Detect row-by-row pipe/whitespace delimited tables (e.g., 3x5.png)
+        var rowByRow = DetectRowByRowLayout(cleaned, heuristicMode);
+        if (rowByRow is not null)
+        {
+            return rowByRow;
+        }
+
+        return new StructuredTableParseResult { Html = null, RejectedLines = cleaned };
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // OCR line cleaning — remove noise, fix common misreads
+    // ──────────────────────────────────────────────────────────────
+
+    private static string CleanOcrLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return string.Empty;
+        }
+
+        var s = line.Trim();
+
+        // Remove standalone bracket noise at edges: "[", "]", "{", "}"
+        s = Regex.Replace(s, @"^\s*[\[\]{}]+\s*", string.Empty);
+        s = Regex.Replace(s, @"\s*[\[\]{}]+\s*$", string.Empty);
+
+        // Fix misplaced pipes at start of line: "|DociorName" → "DociorName"
+        s = Regex.Replace(s, @"^\|\s*", string.Empty);
+
+        // Fix OCR misreads for SQL types
+        s = Regex.Replace(s, @"\bInyarchar\b", "nvarchar", RegexOptions.IgnoreCase);
+        // Fix: nvarchar0) / nvarcha0) / varchar0) → nvarchar(50)
+        // Covers cases where OCR drops "(5" or similar digits from type definitions
+        s = Regex.Replace(s, @"n?varchar[01l]?\)", "nvarchar(50)", RegexOptions.IgnoreCase);
+        // Collapse double parens from chained fixes: "nvarchar(50))" → "nvarchar(50)"
+        s = Regex.Replace(s, @"nvarchar\((\d+)\)\)", "nvarchar($1)");
+
+        // Normalize multiple spaces
+        s = Regex.Replace(s, @"\s+", " ").Trim();
+
+        return s;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Strategy 1: Vertical column layout
+    // OCR reads each column top-to-bottom:
+    //   [Header1, RowLabel1, ..., RowLabelN, Header2, Value1, ..., ValueN]
+    // We detect the transition from text-only lines to currency lines,
+    // then pair row labels with values.
+    // ──────────────────────────────────────────────────────────────
+
+    private static StructuredTableParseResult? DetectVerticalColumnLayout(List<string> lines)
+    {
+        if (lines.Count < 4)
+        {
+            return null;
+        }
+
+        var rejectedLines = new List<string>();
+
+        // Find the first currency/percent line
+        var firstCurrencyIdx = -1;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var trimmed = CleanCell(lines[i]);
+            if (Regex.IsMatch(trimmed, @"^\$\s*[\d,]+(?:\.\d+)?$")
+                || Regex.IsMatch(trimmed, @"^[\d,]+(?:\.\d+)?\s*%$"))
+            {
+                firstCurrencyIdx = i;
+                break;
+            }
+        }
+
+        if (firstCurrencyIdx < 2)
+        {
+            return null; // need at least header + 1 label + 1 value
+        }
+
+        // Count currency lines from firstCurrencyIdx onward
+        var dataCount = 0;
+        for (var i = firstCurrencyIdx; i < lines.Count; i++)
+        {
+            var trimmed = CleanCell(lines[i]);
+            if (Regex.IsMatch(trimmed, @"^\$\s*[\d,]+(?:\.\d+)?$")
+                || Regex.IsMatch(trimmed, @"^[\d,]+(?:\.\d+)?\s*%$"))
+            {
+                dataCount++;
+            }
+            else if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                break; // non-currency line ends the data block
+            }
+        }
+
+        if (dataCount < 1)
+        {
+            return null;
+        }
+
+        // The line just before firstCurrencyIdx should be a text header (e.g., "Price")
+        var headerIdx = firstCurrencyIdx - 1;
+        var headerText = CleanCell(lines[headerIdx]);
+
+        // The text before that header should contain the row labels
+        // We need exactly `dataCount` labels from lines[0..headerIdx-1]
+        var availableLabels = lines.Take(headerIdx)
+            .Select(CleanCell)
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToList();
+
+        if (availableLabels.Count < dataCount)
+        {
+            return null;
+        }
+
+        // Verify the labels are text (not currency/numeric)
+        var allLabelsAreText = availableLabels.All(l =>
+            !Regex.IsMatch(l, @"^\$") && !Regex.IsMatch(l, @"^\d"));
+
+        if (!allLabelsAreText)
+        {
+            return null;
+        }
+
+        // Take the last `dataCount` labels (skip any super-headers like "Fruit")
+        var rowLabels = availableLabels.TakeLast(dataCount).ToList();
+
+        // Collect the actual data values
+        var dataValues = new List<string>();
+        for (var i = firstCurrencyIdx; i < lines.Count && dataValues.Count < dataCount; i++)
+        {
+            var trimmed = CleanCell(lines[i]);
+            if (Regex.IsMatch(trimmed, @"^\$\s*[\d,]+(?:\.\d+)?$")
+                || Regex.IsMatch(trimmed, @"^[\d,]+(?:\.\d+)?\s*%$"))
+            {
+                dataValues.Add(trimmed);
+            }
+        }
+
+        if (rowLabels.Count != dataValues.Count || dataValues.Count < 2)
+        {
+            return null;
+        }
+
+        // Build HTML table with 3 columns: Label, headerText (e.g., "Price"), empty Notes
+        var html = new System.Text.StringBuilder();
+        html.Append("<table><thead><tr>");
+        html.Append("<th>").Append(HtmlEntity.Entitize("Column")).Append("</th>");
+        html.Append("<th>").Append(HtmlEntity.Entitize(headerText)).Append("</th>");
+        html.Append("<th>").Append(HtmlEntity.Entitize("Notes")).Append("</th>");
+        html.Append("</tr></thead><tbody>");
+
+        for (var i = 0; i < rowLabels.Count; i++)
+        {
+            html.Append("<tr>");
+            html.Append("<td>").Append(HtmlEntity.Entitize(rowLabels[i])).Append("</td>");
+            html.Append("<td>").Append(HtmlEntity.Entitize(dataValues[i])).Append("</td>");
+            html.Append("<td></td>");
+            html.Append("</tr>");
+        }
+
+        html.Append("</tbody></table>");
+        return new StructuredTableParseResult { Html = html.ToString(), RejectedLines = rejectedLines };
+    }
+
+    private static string BuildVerticalTableHtml(List<string> headers, List<string> dataValues)
+    {
+        var html = new System.Text.StringBuilder();
+        html.Append("<table><thead><tr>");
+        for (var hi = 0; hi < Math.Min(headers.Count, 3); hi++)
+        {
+            html.Append("<th>").Append(HtmlEntity.Entitize(headers[hi])).Append("</th>");
+        }
+
+        if (headers.Count < 3)
+        {
+            html.Append("<th>").Append(HtmlEntity.Entitize("Value")).Append("</th>");
+        }
+
+        html.Append("</tr></thead><tbody>");
+
+        for (var rowIdx = 0; rowIdx < dataValues.Count; rowIdx++)
+        {
+            html.Append("<tr>");
+            html.Append("<td>").Append(HtmlEntity.Entitize(headers[rowIdx % headers.Count])).Append("</td>");
+            html.Append("<td>").Append(HtmlEntity.Entitize(dataValues[rowIdx])).Append("</td>");
+            if (headers.Count < 3)
+            {
+                html.Append("<td></td>");
+            }
+
+            html.Append("</tr>");
+        }
+
+        html.Append("</tbody></table>");
+        return html.ToString();
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Strategy 2: Label + value pairs on the same line
+    // Handles cases like: "Keyboard $25,000" or "Donations $64,285.95"
+    // ──────────────────────────────────────────────────────────────
+
+    private static StructuredTableParseResult? DetectLabelValuePairLayout(List<string> lines, string heuristicMode)
+    {
+        var tableStart = FindTableStartIndex(lines);
+        var candidateLines = lines.Skip(tableStart).ToList();
 
         var parsedRows = new List<List<string>>();
         var rejectedLines = new List<string>();
-        foreach (var line in candidateLines)
+
+        for (var i = 0; i < candidateLines.Count; i++)
         {
-            if (IsHeaderLikeRow(line))
+            var line = candidateLines[i];
+
+            if (string.IsNullOrWhiteSpace(line) || IsHeaderLikeRow(line))
             {
                 continue;
             }
 
-            if (TryParseSchemaRow(line, out var col1, out var col2, out var col3))
+            // Try currency pattern first: "Label $ amount"
+            var currencyMatch = Regex.Match(
+                line,
+                @"^(.+?)\s+\$\s*([\d,]+(?:\.\d+)?)$",
+                RegexOptions.IgnoreCase);
+
+            if (currencyMatch.Success)
+            {
+                var label = CleanCell(currencyMatch.Groups[1].Value);
+                var amount = NormalizeCurrencyValue(currencyMatch.Groups[2].Value);
+                if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(amount))
+                {
+                    parsedRows.Add([label, amount, string.Empty]);
+                    continue;
+                }
+            }
+
+            // Try percent pattern: "Label 3.5%"
+            var percentMatch = Regex.Match(
+                line,
+                @"^(.+?)\s+([\d,]+(?:\.\d+)?\s*%)$",
+                RegexOptions.IgnoreCase);
+
+            if (percentMatch.Success)
+            {
+                var label = CleanCell(percentMatch.Groups[1].Value);
+                var pct = NormalizePercentValue(percentMatch.Groups[2].Value);
+                if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(pct))
+                {
+                    parsedRows.Add([label, pct, string.Empty]);
+                    continue;
+                }
+            }
+
+            // Try parenthesized negative: "(Net Income)" → skip as sub-header
+            if (Regex.IsMatch(line, @"^\([^0-9]+\)$"))
+            {
+                var label = CleanCell(line.Trim('(', ')'));
+                parsedRows.Add([label, string.Empty, string.Empty]);
+                continue;
+            }
+
+            // Try colon/dash separator: "Key: Value"
+            var kvMatch = Regex.Match(line, @"^(.+?)\s*[:\-]\s*(.+)$");
+            if (kvMatch.Success)
+            {
+                var label = CleanCell(kvMatch.Groups[1].Value);
+                var value = CleanCell(kvMatch.Groups[2].Value);
+                if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(value))
+                {
+                    parsedRows.Add([label, value, string.Empty]);
+                    continue;
+                }
+            }
+
+            var trimmed = line.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                rejectedLines.Add(trimmed);
+            }
+        }
+
+        if (parsedRows.Count < 2)
+        {
+            return null;
+        }
+
+        // Decide if this is truly a label+value layout:
+        // More than half of rows should have a non-empty second column
+        var rowsWithValues = parsedRows.Count(r => r.Count > 1 && !string.IsNullOrWhiteSpace(r[1]));
+        if (rowsWithValues < parsedRows.Count / 2)
+        {
+            return null;
+        }
+
+        // Check that column 1 looks like labels (mostly alphabetic, not data types)
+        var looksLikeLabels = parsedRows.Count(r =>
+        {
+            var c = r[0];
+            return !string.IsNullOrWhiteSpace(c) && !TrySplitSqlTypeAndConstraint(c, out _, out _);
+        });
+        if (looksLikeLabels < parsedRows.Count / 2)
+        {
+            return null;
+        }
+
+        var headers = InferHeaders(parsedRows, heuristicMode);
+        var html = BuildTableHtml(headers, parsedRows);
+        return new StructuredTableParseResult { Html = html, RejectedLines = rejectedLines };
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Strategy 3: Row-by-row pipe/whitespace delimited tables
+    // Handles schema tables like: "ID int PK, Identity"
+    // ──────────────────────────────────────────────────────────────
+
+    private static StructuredTableParseResult? DetectRowByRowLayout(List<string> lines, string heuristicMode)
+    {
+        var tableStart = FindTableStartIndex(lines);
+        var candidateLines = lines.Skip(tableStart).ToList();
+
+        var parsedRows = new List<List<string>>();
+        var rejectedLines = new List<string>();
+
+        // Detect explicit header row
+        var headerLineIndex = -1;
+        List<string>? detectedHeaders = null;
+        for (var hi = 0; hi < candidateLines.Count; hi++)
+        {
+            var tokens = SplitLineTokens(candidateLines[hi]);
+            if (tokens.Count >= 2)
+            {
+                var allAlpha = tokens.All(t => Regex.IsMatch(t, "[A-Za-z]") && !Regex.IsMatch(t, "\\d") && t.Trim().Length <= 40);
+                if (allAlpha)
+                {
+                    headerLineIndex = hi;
+                    detectedHeaders = tokens.Select(CleanCell).ToList();
+                    break;
+                }
+            }
+        }
+
+        for (var i = 0; i < candidateLines.Count; i++)
+        {
+            if (i == headerLineIndex)
+            {
+                continue;
+            }
+
+            var line = candidateLines[i];
+            if (string.IsNullOrWhiteSpace(line) || IsHeaderLikeRow(line))
+            {
+                continue;
+            }
+
+            // Try schema row parsing (pipe-delimited, SQL types, currency, percent)
+            if (TryParseSchemaRow(line, out var col1, out var col2, out var col3, heuristicMode))
             {
                 parsedRows.Add([col1, col2, col3]);
                 continue;
             }
 
+            // Try pipe/tab/multi-space tokenized rows
             var tokens = SplitLineTokens(line);
-            if (tokens.Count >= 3 && LooksLikeSchemaRow(tokens))
+            if (tokens.Count >= 2)
             {
-                parsedRows.Add(NormalizeRowToThreeColumns(tokens));
-                continue;
+                if (tokens.Count >= 3 || LooksLikeSchemaRow(tokens))
+                {
+                    parsedRows.Add(NormalizeRowToThreeColumns(tokens));
+                    continue;
+                }
+
+                // 2-token row: try to split label from value
+                var cleaned0 = CleanCell(tokens[0]);
+                var cleaned1 = CleanCell(tokens[1]);
+                if (!string.IsNullOrWhiteSpace(cleaned0) && !string.IsNullOrWhiteSpace(cleaned1))
+                {
+                    parsedRows.Add([cleaned0, cleaned1, string.Empty]);
+                    continue;
+                }
             }
 
             var trimmed = line.Trim();
@@ -305,16 +696,34 @@ public class OcrTableFillService : IOcrTableFillService
 
         if (parsedRows.Count == 0)
         {
-            return new StructuredTableParseResult
-            {
-                Html = null,
-                RejectedLines = rejectedLines
-            };
+            return null;
         }
 
-        List<string> headers = ["Column", "Data Type", "Constraints"];
-        var dataRows = parsedRows;
+        List<string> headers;
+        if (detectedHeaders is not null && detectedHeaders.Count > 0)
+        {
+            while (detectedHeaders.Count < 3)
+            {
+                detectedHeaders.Add(string.Empty);
+            }
 
+            headers = detectedHeaders.Take(3).ToList();
+        }
+        else
+        {
+            headers = InferHeaders(parsedRows, heuristicMode);
+        }
+
+        var html = BuildTableHtml(headers, parsedRows);
+        return new StructuredTableParseResult { Html = html, RejectedLines = rejectedLines };
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Shared helpers
+    // ──────────────────────────────────────────────────────────────
+
+    private static string BuildTableHtml(List<string> headers, List<List<string>> rows)
+    {
         var html = new System.Text.StringBuilder();
         html.Append("<table><thead><tr>");
         foreach (var header in headers.Take(3))
@@ -323,7 +732,7 @@ public class OcrTableFillService : IOcrTableFillService
         }
         html.Append("</tr></thead><tbody>");
 
-        foreach (var row in dataRows)
+        foreach (var row in rows)
         {
             var columns = NormalizeRowToThreeColumns(row);
             html.Append("<tr>");
@@ -335,11 +744,7 @@ public class OcrTableFillService : IOcrTableFillService
         }
 
         html.Append("</tbody></table>");
-        return new StructuredTableParseResult
-        {
-            Html = html.ToString(),
-            RejectedLines = rejectedLines
-        };
+        return html.ToString();
     }
 
     private static int FindTableStartIndex(List<string> lines)
@@ -356,9 +761,98 @@ public class OcrTableFillService : IOcrTableFillService
             {
                 return i;
             }
+
+            // Also detect currency/percent lines as table start
+            if (Regex.IsMatch(line, @"^.+\s+\$\s*[\d,]+", RegexOptions.IgnoreCase))
+            {
+                return i;
+            }
+
+            if (Regex.IsMatch(line, @"^.+\s+[\d,]+(?:\.\d+)?\s*%", RegexOptions.IgnoreCase))
+            {
+                return i;
+            }
         }
 
         return 0;
+    }
+
+    private static List<string> InferHeaders(List<List<string>> rows, string heuristicMode)
+    {
+        if (rows is null || rows.Count == 0)
+        {
+            return new List<string> { "Column", "Value", "Notes" };
+        }
+
+        var mode = (heuristicMode ?? "auto").Trim().ToLowerInvariant();
+        if (mode == "schema")
+        {
+            return new List<string> { "Column", "Data Type", "Constraints" };
+        }
+
+        if (mode == "labelvalue" || mode == "label_value" || mode == "value")
+        {
+            return new List<string> { "Column", "Value", "Notes" };
+        }
+
+        // Auto-detect: analyze column content patterns
+        var total = rows.Count;
+        var sqlTypeCount = 0;
+        var numericSecondCount = 0;
+        var numericThirdCount = 0;
+        var percentSecondCount = 0;
+        var percentThirdCount = 0;
+        var currencySecondCount = 0;
+        var currencyThirdCount = 0;
+        var nonEmptySecond = 0;
+        var nonEmptyThird = 0;
+
+        foreach (var r in rows)
+        {
+            var c2 = r.Count > 1 ? r[1] : string.Empty;
+            var c3 = r.Count > 2 ? r[2] : string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(c2)) nonEmptySecond++;
+            if (!string.IsNullOrWhiteSpace(c3)) nonEmptyThird++;
+
+            if (TrySplitSqlTypeAndConstraint(c2, out _, out _)) sqlTypeCount++;
+
+            if (Regex.IsMatch(c2, "[0-9]") && !Regex.IsMatch(c2, "[A-Za-z]")) numericSecondCount++;
+            if (Regex.IsMatch(c3, "[0-9]") && !Regex.IsMatch(c3, "[A-Za-z]")) numericThirdCount++;
+
+            if (c2.Contains("%")) percentSecondCount++;
+            if (c3.Contains("%")) percentThirdCount++;
+            if (c2.Contains("$")) currencySecondCount++;
+            if (c3.Contains("$")) currencyThirdCount++;
+        }
+
+        // If majority of rows declare SQL types in column 2, treat as schema-like
+        if (sqlTypeCount >= Math.Ceiling(total * 0.5))
+        {
+            return new List<string> { "Column", "Data Type", "Constraints" };
+        }
+
+        // If numeric/currency/percent values appear mostly in third column
+        if (numericThirdCount >= Math.Ceiling(total * 0.5) || (sqlTypeCount > 0 && numericThirdCount > 0))
+        {
+            return new List<string> { "Column", "Data Type", "Value" };
+        }
+
+        // If numeric/currency/percent values appear mostly in second column, assume label/value
+        if (numericSecondCount >= Math.Ceiling(total * 0.5)
+            || percentSecondCount >= Math.Ceiling(total * 0.5)
+            || currencySecondCount >= Math.Ceiling(total * 0.5))
+        {
+            return new List<string> { "Column", "Value", "Notes" };
+        }
+
+        // Fallback: if third column is mostly empty, present two-column style
+        if (nonEmptyThird < Math.Ceiling(total * 0.33))
+        {
+            return new List<string> { "Column", "Value", "Notes" };
+        }
+
+        return new List<string> { "Column", "Data Type", "Constraints" };
     }
 
     private static bool LooksLikeSchemaRow(List<string> tokens)
@@ -382,7 +876,7 @@ public class OcrTableFillService : IOcrTableFillService
         return false;
     }
 
-    private static bool TryParseSchemaRow(string line, out string col1, out string col2, out string col3)
+    private static bool TryParseSchemaRow(string line, out string col1, out string col2, out string col3, string heuristicMode = "auto")
     {
         col1 = string.Empty;
         col2 = string.Empty;
@@ -397,6 +891,63 @@ public class OcrTableFillService : IOcrTableFillService
         if (IsHeaderLikeRow(normalizedLine))
         {
             return false;
+        }
+
+        var mode = (heuristicMode ?? "auto").Trim().ToLowerInvariant();
+
+        // Detect currency-style rows like: "Donations $ 64,285.95" or "Iran $ 9767321"
+        var currencyMatch = Regex.Match(
+            normalizedLine,
+            @"^(.+?)\s+\$\s*([\d,]+(?:\.\d+)?)$",
+            RegexOptions.IgnoreCase);
+
+        if (currencyMatch.Success)
+        {
+            col1 = CleanCell(currencyMatch.Groups[1].Value);
+            if (mode == "labelvalue" || mode == "label_value" || mode == "value")
+            {
+                col2 = NormalizeCurrencyValue(currencyMatch.Groups[2].Value);
+                col3 = string.Empty;
+            }
+            else
+            {
+                col2 = "decimal(18,2)";
+                col3 = NormalizeCurrencyValue(currencyMatch.Groups[2].Value);
+            }
+
+            return true;
+        }
+
+        // Detect percent-style rows like: "Marketing/Admin (% of Revenue) 3.5%"
+        var percentMatch = Regex.Match(
+            normalizedLine,
+            @"^(.+?)\s+([\d,]+(?:\.\d+)?\s*%)$",
+            RegexOptions.IgnoreCase);
+
+        if (percentMatch.Success)
+        {
+            col1 = CleanCell(percentMatch.Groups[1].Value);
+            if (mode == "labelvalue" || mode == "label_value" || mode == "value")
+            {
+                col2 = NormalizePercentValue(percentMatch.Groups[2].Value);
+                col3 = string.Empty;
+            }
+            else
+            {
+                col2 = "decimal(5,2)";
+                col3 = NormalizePercentValue(percentMatch.Groups[2].Value);
+            }
+
+            return true;
+        }
+
+        // Handle single parenthesized label rows like: "(Net Income)"
+        if (Regex.IsMatch(normalizedLine, @"^\([^0-9]+\)$"))
+        {
+            col1 = CleanCell(normalizedLine.Trim('(', ')'));
+            col2 = "nvarchar(255)";
+            col3 = string.Empty;
+            return true;
         }
 
         var pipeTokens = normalizedLine
@@ -436,7 +987,7 @@ public class OcrTableFillService : IOcrTableFillService
 
         var sqlTypeMatch = Regex.Match(
             normalizedLine,
-            @"\b(?:n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)(?=\s|\||$)",
+            @"(?:n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)(?=\s|\||$|\)|\])",
             RegexOptions.IgnoreCase);
 
         if (!sqlTypeMatch.Success)
@@ -446,7 +997,10 @@ public class OcrTableFillService : IOcrTableFillService
 
         col1 = CleanCell(normalizedLine[..sqlTypeMatch.Index]);
         col2 = NormalizeDataTypeText(CleanCell(sqlTypeMatch.Value));
-        col3 = CleanCell(normalizedLine[(sqlTypeMatch.Index + sqlTypeMatch.Length)..]);
+        var rawCol3 = normalizedLine[(sqlTypeMatch.Index + sqlTypeMatch.Length)..];
+        // Strip orphaned closing paren from OCR type fix (e.g., ") [Unique License Code")
+        rawCol3 = Regex.Replace(rawCol3, @"^\)\s*", string.Empty);
+        col3 = CleanCell(rawCol3);
 
         return !string.IsNullOrWhiteSpace(col1) && !string.IsNullOrWhiteSpace(col2);
     }
@@ -515,7 +1069,7 @@ public class OcrTableFillService : IOcrTableFillService
 
         var match = Regex.Match(
             left,
-            @"^(.*?)([i1l\|]?n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)\s*$",
+            @"^(.*?)(n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)\s*$",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -540,7 +1094,7 @@ public class OcrTableFillService : IOcrTableFillService
 
         var match = Regex.Match(
             input,
-            @"^(?:\|\s*)?([i1l\|]?n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)(?=\s|\||$)(.*)$",
+            @"^(?:\|\s*)?(n?varchar\s*\(\s*(?:\d+|max)\s*\)|char\s*\(\s*\d+\s*\)|int|bigint|smallint|tinyint|bit|date|datetime2?|time|decimal\s*\(\s*\d+\s*,\s*\d+\s*\)|numeric\s*\(\s*\d+\s*,\s*\d+\s*\)|float|real|uniqueidentifier|text|ntext)(?=\s|\||$|\)|\])(.*)$",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -549,7 +1103,10 @@ public class OcrTableFillService : IOcrTableFillService
         }
 
         dataType = NormalizeDataTypeText(CleanCell(match.Groups[1].Value));
-        constraints = CleanCell(match.Groups[2].Value);
+        var rawConstraints = match.Groups[2].Value;
+        // Strip orphaned closing paren from OCR type fix
+        rawConstraints = Regex.Replace(rawConstraints, @"^\)\s*", string.Empty);
+        constraints = CleanCell(rawConstraints);
         return !string.IsNullOrWhiteSpace(dataType);
     }
 
@@ -561,7 +1118,10 @@ public class OcrTableFillService : IOcrTableFillService
         }
 
         var normalized = value.Trim();
+        // Fix any remaining OCR prefix artifacts on varchar types
         normalized = Regex.Replace(normalized, @"^[i1l\|]+(?=n?varchar\s*\()", string.Empty, RegexOptions.IgnoreCase);
+        // Normalize "char" without "n" prefix to "nchar" only if it looks like an OCR miss of nvarchar
+        // (Don't touch legitimate "char(N)" types)
         return normalized;
     }
 
@@ -578,5 +1138,75 @@ public class OcrTableFillService : IOcrTableFillService
         cleaned = Regex.Replace(cleaned, @"[\[\]{}]+$", string.Empty);
         cleaned = Regex.Replace(cleaned, "\\s+", " ").Trim();
         return cleaned;
+    }
+
+    private static string NormalizeCurrencyValue(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var s = raw.Trim();
+        var isParenNegative = s.StartsWith("(") && s.EndsWith(")");
+        s = s.Replace("$", "").Replace(" ", "").Replace(",", "");
+        if (isParenNegative)
+        {
+            s = s.Trim('(', ')');
+        }
+
+        if (!s.Contains('.'))
+        {
+            if (s.Length > 2)
+            {
+                s = s.Insert(s.Length - 2, ".");
+            }
+            else
+            {
+                s = "0." + s.PadLeft(2, '0');
+            }
+        }
+
+        if (!decimal.TryParse(s, NumberStyles.Number | NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var d))
+        {
+            return raw;
+        }
+
+        var formatted = d.ToString("N2", CultureInfo.GetCultureInfo("en-US"));
+        if (isParenNegative)
+        {
+            formatted = "(" + formatted + ")";
+        }
+
+        return formatted;
+    }
+
+    private static string NormalizePercentValue(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var s = raw.Trim();
+        var isParenNegative = s.StartsWith("(") && s.EndsWith(")");
+        s = s.Replace("%", "").Replace(" ", "").Replace(",", "");
+        if (isParenNegative)
+        {
+            s = s.Trim('(', ')');
+        }
+
+        if (!decimal.TryParse(s, NumberStyles.Number | NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var d))
+        {
+            return raw;
+        }
+
+        var formatted = d.ToString("N2", CultureInfo.GetCultureInfo("en-US")) + "%";
+        if (isParenNegative)
+        {
+            formatted = "(" + formatted + ")";
+        }
+
+        return formatted;
     }
 }

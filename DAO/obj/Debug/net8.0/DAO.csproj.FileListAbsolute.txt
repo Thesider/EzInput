@@ -13,3 +13,4 @@ C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.dll
 C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\refint\DAO.dll
 C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.pdb
 C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\ref\DAO.dll
+C:\Users\Bar\Desktop\PPJ\EzInput\DAO\obj\Debug\net8.0\DAO.sourcelink.json
